@@ -1,139 +1,82 @@
-import time
-import os
-from datetime import datetime, timezone
 import streamlit as st
+from supabase import create_client, Client
+import os
+from datetime import datetime
+import time
 
-# ---------------------------
-#  Supabase 接続設定（Secrets or 環境変数）
-# ---------------------------
-SUPABASE_URL = st.secrets.get("SUPABASE_URL", os.environ.get("SUPABASE_URL", ""))
-SUPABASE_ANON_KEY = st.secrets.get("SUPABASE_ANON_KEY", os.environ.get("SUPABASE_ANON_KEY", ""))
+# --- Supabase 接続 ---
+SUPABASE_URL = st.secrets["https://cmneviikjxrjxqsvektg.supabase.co"]
+SUPABASE_ANON_KEY = st.secrets["eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNtbmV2aWlranhyanhxc3Zla3RnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIzOTcxNjcsImV4cCI6MjA3Nzk3MzE2N30.GScLcmiZuzEGxKvsFepJTDMi8D33D9MNi6za4RPdebo"]
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
 
-TABLE_NAME = "score_tap_easy_game"  # ← Supabaseのテーブル名に固定
+TABLE_NAME = "score_tap_easy_game"   # ←ここ重要
 
-sb = None
-if SUPABASE_URL and SUPABASE_ANON_KEY:
-    from supabase import create_client
-    sb = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+st.set_page_config(page_title="QR TAP GAME", layout="centered")
 
-# ---------------------------
-#  初期化
-# ---------------------------
-st.set_page_config(page_title="QR Tap Challenge", page_icon="🎮", layout="centered")
-
-# Query param: pid
-params = st.query_params if hasattr(st, "query_params") else st.experimental_get_query_params()
-pid = params.get("pid", [""])[0] if isinstance(params.get("pid"), list) else params.get("pid", "")
-
-if "player_id" not in st.session_state:
-    st.session_state.player_id = pid or ""
-if "name" not in st.session_state:
-    st.session_state.name = ""
-if "game_seconds" not in st.session_state:
-    st.session_state.game_seconds = 10
+# --- セッション初期化 ---
 if "is_running" not in st.session_state:
     st.session_state.is_running = False
-if "end_ts" not in st.session_state:
-    st.session_state.end_ts = 0.0
 if "count" not in st.session_state:
     st.session_state.count = 0
-if "submitted" not in st.session_state:
-    st.session_state.submitted = False
+if "time_left" not in st.session_state:
+    st.session_state.time_left = 10
 
-# ---------------------------
-#  ロジック
-# ---------------------------
-def start_game():
-    if not st.session_state.player_id or not st.session_state.name:
-        st.error("プレイヤーIDと名前を入力してください")
-        return
-    st.session_state.count = 0
-    st.session_state.submitted = False
-    st.session_state.is_running = True
-    st.session_state.end_ts = time.time() + int(st.session_state.game_seconds)
+st.title("🎮 QR Tap Challenge")
 
-def remain_seconds():
-    return max(0, int(st.session_state.end_ts - time.time())) if st.session_state.is_running else 0
+player_id = st.text_input("プレイヤーID（QRのpid）")
+name = st.text_input("名前")
+limit_sec = st.number_input("制限時間（秒）", min_value=3, max_value=60, value=10)
 
-def stop_if_timeup():
-    if st.session_state.is_running and time.time() >= st.session_state.end_ts:
-        st.session_state.is_running = False
+col = st.columns(2)
+start_btn = col[0].button("10秒チャレンジ開始")
 
-def tap_once():
-    if st.session_state.is_running:
+if start_btn:
+    if not player_id or not name:
+        st.warning("プレイヤーIDと名前は必須です")
+    else:
+        st.session_state.is_running = True
+        st.session_state.count = 0
+        st.session_state.time_left = limit_sec
+        start_time = time.time()
+        while st.session_state.time_left > 0:
+            st.session_state.time_left = limit_sec - int(time.time() - start_time)
+            st.rerun()  # ← 最新API
+
+# --- TAP ボタン ---
+if st.session_state.is_running:
+    if st.button("TAP!", use_container_width=True):
         st.session_state.count += 1
+    st.metric("残り時間", st.session_state.time_left)
+    st.metric("現在の回数", st.session_state.count)
+else:
+    st.metric("記録", st.session_state.count)
 
-def save_score(player_id: str, name: str, count: int):
-    """自己ベストのみ更新。Supabase未設定時はセッション内ローカルに保持。"""
-    if not sb:
-        best = st.session_state.get("local_best", {})
-        cur = best.get(player_id, {"name": name, "best_count": 0})
-        if count > int(cur.get("best_count") or 0):
-            best[player_id] = {
-                "name": name,
-                "best_count": int(count),
-                "updated_at": datetime.now(timezone.utc).isoformat(),
-            }
-            st.session_state.local_best = best
-        return
+# --- 結果送信 ---
+if st.button("結果を送信", disabled=st.session_state.is_running or st.session_state.count == 0):
+    # 既存記録を取得
+    res = supabase.table(TABLE_NAME).select("*").eq("player_id", player_id).execute()
+    old = res.data[0] if res.data else None
 
-    # 現在ベスト取得
-    res = sb.table(TABLE_NAME).select("best_count").eq("player_id", player_id).limit(1).execute()
-    cur_best = int(res.data[0]["best_count"]) if (res and res.data) else 0
-
-    # 上回ったときだけUPSERT
-    if count > cur_best:
-        payload = {
+    # ベスト更新なら upsert
+    best = st.session_state.count
+    if old and old["best_count"] >= best:
+        pass  # 更新不要
+    else:
+        supabase.table(TABLE_NAME).upsert({
             "player_id": player_id,
             "name": name,
-            "best_count": int(count),
-            "updated_at": datetime.now(timezone.utc).isoformat(),
-        }
-        sb.table(TABLE_NAME).upsert(payload, on_conflict="player_id").execute()
+            "best_count": best,
+            "updated_at": datetime.utcnow().isoformat()
+        }).execute()
 
-def fetch_top10():
-    if not sb:
-        best = st.session_state.get("local_best", {})
-        rows = [{"player_id": k, "name": v.get("name",""), "best_count": v.get("best_count",0), "updated_at": v.get("updated_at","")}
-                for k, v in best.items()]
-        rows.sort(key=lambda r: (-int(r["best_count"] or 0), r.get("updated_at","")))
-        return rows[:10]
+    st.success("✅ 記録を送信しました！")
+    st.rerun()
 
-    res = sb.table(TABLE_NAME).select("player_id,name,best_count,updated_at") \
-            .order("best_count", desc=True).order("updated_at", desc=False).limit(10).execute()
-    return res.data or []
+st.write("---")
 
-# ---------------------------
-#  UI
-# ---------------------------
-st.title("🎮 QR Tap Challenge")
-st.caption(f"モード: {'ONLINE(Supabase)' if sb else 'LOCAL(この端末)'} / テーブル: {TABLE_NAME}")
+# --- ランキング表示 ---
+st.subheader("🏆 TOP10 ランキング")
+ranking = supabase.table(TABLE_NAME).select("*").order("best_count", desc=True).limit(10).execute().data
 
-with st.form("settings_form"):
-    st.text_input("プレイヤーID（QRのpid）", key="player_id", placeholder="例: TEAM01_001")
-    st.text_input("名前", key="name", placeholder="例: たかお")
-    st.number_input("制限時間（秒）", min_value=3, max_value=60, key="game_seconds")
-    st.form_submit_button("10秒チャレンジ開始", on_click=start_game)
-
-stop_if_timeup()
-st.write(f"**残り: {remain_seconds()} 秒 / 現在: {st.session_state.count} 回**")
-
-if st.button("TAP!", use_container_width=True, disabled=not st.session_state.is_running):
-    tap_once()
-    st.rerun()  # ← ここが正式API
-
-cols = st.columns([1,2])
-with cols[0]:
-    if st.button("結果を送信", disabled=st.session_state.is_running):
-        save_score(st.session_state.player_id.strip(), st.session_state.name.strip(), int(st.session_state.count))
-        st.session_state.submitted = True
-        st.rerun()
-with cols[1]:
-    if st.session_state.submitted:
-        st.success("送信しました。ランキングに反映されます。")
-
-st.markdown("---")
-st.subheader("🏆 TOP 10 ランキング")
-for i, r in enumerate(fetch_top10(), start=1):
-    st.write(f"{i:>2}. **{r.get('name') or '???'}** — {int(r.get('best_count') or 0)} 回 (ID: `{r.get('player_id')}`)")
-st.caption("並び順：回数降順→同数は更新が早い順")
+for i, row in enumerate(ranking, 1):
+    st.write(f"{i}. **{row['name']}** — {row['best_count']}回  (ID: {row['player_id']})")
