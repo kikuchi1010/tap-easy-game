@@ -121,7 +121,7 @@ st.write(f"残り: **{remain()}** 秒 / 現在: **{st.session_state.count} 回**
 big = st.button("TAP!", disabled=not st.session_state.is_running)
 if big:
     tap()
-    st.experimental_rerun()
+    st.rerun()
 
 if st.button("結果を送信", disabled=st.session_state.is_running):
     save_score(st.session_state.player_id, st.session_state.name, st.session_state.count)
