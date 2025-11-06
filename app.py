@@ -1,40 +1,40 @@
-// QR Tap Challenge - Single-file React App (Canvas Previewable)
-// -------------------------------------------------------------
-// 使い方（最短）
-// 1) まずはローカル保存モードで動作確認できます（Supabase不要）。
-//    - 右上の「Open in new tab」(プレビュー)で起動
-//    - URLに ?pid=YOUR_ID を付けてアクセス（例： .../index.html?pid=TAKAO001 ）
-//    - 名前を入力→「10秒チャレンジ開始」→連打→送信→TOP10表示
-//
-// 2) 本番運用（ランキング共有）したい場合はSupabaseを使用
-//    - Supabaseでプロジェクト作成 → Table: scores
-//      Columns:
-//        id: uuid (default uuid_generate_v4(), PK)
-//        player_id: text (unique)
-//        name: text
-//        best_count: int8
-//        updated_at: timestamptz (default now())
-//    - RLS(行レベルセキュリティ) ON、Policy: anonがSELECT/UPSERT可（必要最小限）
-//    - 下の SUPABASE_URL / SUPABASE_ANON_KEY を貼り付け
-//
-// 3) チート簡易対策（初期）
-//    - タイマーはクライアント側で固定10秒。必要に応じてサーバ側で「更新間隔制限」など追加。
-//    - 同一player_idのベストのみ更新。
-//
-// 4) 司会/スクリーン用
-//    - 画面下部のリーダーボードは数秒ごと自動更新（Supabase接続時）。
-//
-// 5) 拡張のヒント
-//    - 大会コード（event_id）列をscoresに追加し、イベント毎のTOP10を出し分け
-//    - 管理者用ダッシュボードやCSVエクスポート
-//
-// -------------------------------------------------------------
+# QR Tap Challenge - Single-file React App (Canvas Previewable)
+# -------------------------------------------------------------
+# 使い方（最短）
+# 1) まずはローカル保存モードで動作確認できます（Supabase不要）。
+#    - 右上の「Open in new tab」(プレビュー)で起動
+#    - URLに ?pid=YOUR_ID を付けてアクセス（例： .../index.html?pid=TAKAO001 ）
+#    - 名前を入力→「10秒チャレンジ開始」→連打→送信→TOP10表示
+#
+# 2) 本番運用（ランキング共有）したい場合はSupabaseを使用
+#    - Supabaseでプロジェクト作成 → Table: scores
+#      Columns:
+#        id: uuid (default uuid_generate_v4(), PK)
+#        player_id: text (unique)
+#        name: text
+#        best_count: int8
+#        updated_at: timestamptz (default now())
+#    - RLS(行レベルセキュリティ) ON、Policy: anonがSELECT/UPSERT可（必要最小限）
+#    - 下の SUPABASE_URL / SUPABASE_ANON_KEY を貼り付け
+#
+# 3) チート簡易対策（初期）
+#    - タイマーはクライアント側で固定10秒。必要に応じてサーバ側で「更新間隔制限」など追加。
+#    - 同一player_idのベストのみ更新。
+#
+# 4) 司会/スクリーン用
+#    - 画面下部のリーダーボードは数秒ごと自動更新（Supabase接続時）。
+#
+# 5) 拡張のヒント
+#    - 大会コード（event_id）列をscoresに追加し、イベント毎のTOP10を出し分け
+#    - 管理者用ダッシュボードやCSVエクスポート
+#
+# -------------------------------------------------------------
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 
-// ▼ 必要ならSupabaseを使用（未設定なら自動でローカル保存モードに）
-const SUPABASE_URL = ""; // 例: "https://xxxx.supabase.co"
-const SUPABASE_ANON_KEY = ""; // 例: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+# ▼ 必要ならSupabaseを使用（未設定なら自動でローカル保存モードに）
+const SUPABASE_URL = ""; # 例: "https:#xxxx.supabase.co"
+const SUPABASE_ANON_KEY = ""; # 例: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
 
 let supabase = null as any;
 async function ensureSupabase() {
@@ -46,7 +46,7 @@ async function ensureSupabase() {
   return supabase;
 }
 
-// ▼ ユーティリティ
+# ▼ ユーティリティ
 function getQueryParam(name: string) {
   const url = new URL(window.location.href);
   return url.searchParams.get(name);
@@ -56,7 +56,7 @@ function cls(...xs: (string | false | null | undefined)[]) {
   return xs.filter(Boolean).join(" ");
 }
 
-// ▼ ローカル保存（フォールバック）
+# ▼ ローカル保存（フォールバック）
 const LS_KEY = "qr_tap_scores_v1";
 
 function lsGetAll(): any[] {
@@ -90,7 +90,7 @@ function lsTop10(): any[] {
     .slice(0, 10);
 }
 
-// ▼ Supabase保存
+# ▼ Supabase保存
 async function sbUpsertBest(player_id: string, name: string, count: number) {
   const sb = await ensureSupabase();
   if (!sb) {
@@ -98,7 +98,7 @@ async function sbUpsertBest(player_id: string, name: string, count: number) {
     return { ok: true, mode: "local" } as const;
   }
 
-  // 既存取得
+  # 既存取得
   const { data: rows, error: e1 } = await sb
     .from("scores")
     .select("player_id, name, best_count")
@@ -106,7 +106,7 @@ async function sbUpsertBest(player_id: string, name: string, count: number) {
     .limit(1);
   if (e1) {
     console.error(e1);
-    // フォールバック
+    # フォールバック
     lsUpsertBest(player_id, name, count);
     return { ok: false, mode: "fallback-local", error: e1 } as const;
   }
@@ -140,7 +140,7 @@ async function sbTop10(): Promise<any[]> {
   return data ?? [];
 }
 
-// ▼ メインUI
+# ▼ メインUI
 export default function App() {
   const [playerId, setPlayerId] = useState<string>(getQueryParam("pid") || "");
   const [name, setName] = useState<string>("");
@@ -156,9 +156,9 @@ export default function App() {
   const timerRef = useRef<number | null>(null);
 
   useEffect(() => {
-    // 初期ロード時TOP10
+    # 初期ロード時TOP10
     refreshTop10();
-    // Supabaseなら2秒毎に自動更新（司会用）
+    # Supabaseなら2秒毎に自動更新（司会用）
     let int: any;
     if (backendMode === "supabase") {
       int = setInterval(() => refreshTop10(), 2000);
