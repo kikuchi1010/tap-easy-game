@@ -5,8 +5,8 @@ from datetime import datetime
 import time
 
 # --- Supabase 接続 ---
-SUPABASE_URL = st.secrets["https://cmneviikjxrjxqsvektg.supabase.co"]
-SUPABASE_ANON_KEY = st.secrets["eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNtbmV2aWlranhyanhxc3Zla3RnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIzOTcxNjcsImV4cCI6MjA3Nzk3MzE2N30.GScLcmiZuzEGxKvsFepJTDMi8D33D9MNi6za4RPdebo"]
+SUPABASE_URL = st.secrets["SUPABASE_URL"]
+SUPABASE_ANON_KEY = st.secrets["SUPABASE_ANON_KEY"]
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
 
 TABLE_NAME = "score_tap_easy_game"   # ←ここ重要
